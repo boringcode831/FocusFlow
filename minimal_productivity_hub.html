@@ -1,0 +1,1650 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FocusHub — Minimal Productivity Suite</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Inter & JetBrains Mono for crisp numbers -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
+    <!-- Tone.js for gentle reminder & timer audio chimes -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #FFFFFF;
+            color: #0F172A;
+            overflow-x: hidden;
+        }
+        .font-mono-num {
+            font-family: 'JetBrains Mono', monospace;
+            font-variant-numeric: tabular-nums;
+        }
+        /* Smooth circular SVG progress ring transition */
+        .progress-ring__circle {
+            transition: stroke-dashoffset 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+            transform: rotate(-90deg);
+            transform-origin: 50% 50%;
+        }
+        /* Subtle custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #FFFFFF;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #CBD5E1;
+            border-radius: 9999px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94A3B8;
+        }
+    </style>
+</head>
+<body class="bg-white min-h-screen flex flex-col selection:bg-blue-600 selection:text-white">
+
+    <!-- Active Reminder Alert Banner (Hidden until triggered) -->
+    <div id="reminder-banner" class="hidden fixed top-4 left-1/2 -translate-x-1/2 z-50 w-11/12 max-w-lg bg-blue-600 text-white rounded-2xl shadow-xl p-4 border border-blue-500 flex items-center justify-between gap-4 animate-bounce">
+        <div class="flex items-center gap-3">
+            <span class="text-2xl">🔔</span>
+            <div>
+                <p class="text-xs font-semibold uppercase tracking-wider text-blue-100">Reminder Alert</p>
+                <h4 id="reminder-banner-title" class="font-bold text-base">Event Name</h4>
+                <p id="reminder-banner-time" class="text-xs text-blue-100"></p>
+            </div>
+        </div>
+        <button onclick="dismissReminderBanner()" class="bg-white text-blue-600 hover:bg-blue-50 font-semibold px-3 py-1.5 rounded-xl text-xs transition shadow-sm">
+            Dismiss
+        </button>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast-box" class="fixed bottom-5 right-5 z-50 hidden bg-slate-900 text-white px-4 py-2.5 rounded-xl shadow-lg text-sm font-medium flex items-center gap-2 transition-all">
+        <span id="toast-icon">✨</span>
+        <span id="toast-text">Action saved</span>
+    </div>
+
+    <!-- Top Navigation Bar (Minimal White Background + Blue Menu Buttons) -->
+    <header class="sticky top-0 z-30 bg-white/95 backdrop-blur border-b border-slate-200">
+        <div class="max-w-6xl mx-auto px-4 sm:px-6 py-3.5 flex flex-col sm:flex-row items-center justify-between gap-3">
+            <!-- Brand Title -->
+            <div class="flex items-center gap-2.5">
+                <div class="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center text-white font-bold text-lg shadow-sm">
+                    ◎
+                </div>
+                <div>
+                    <h1 class="font-bold text-lg tracking-tight text-slate-900 leading-none">FocusHub</h1>
+                    <p class="text-xs text-slate-500 mt-0.5">Minimal Workspace</p>
+                </div>
+            </div>
+
+            <!-- Blue Navigation Buttons -->
+            <nav class="flex flex-wrap items-center justify-center gap-2 w-full sm:w-auto" aria-label="Main Navigation">
+                <button onclick="switchSection('timer')" id="nav-timer" class="nav-btn px-4 py-2 rounded-xl text-sm font-semibold transition-all flex items-center gap-1.5 bg-blue-600 text-white shadow-sm hover:bg-blue-700">
+                    <span>⏱️</span> <span>Focus Timer</span>
+                </button>
+                <button onclick="switchSection('calendar')" id="nav-calendar" class="nav-btn px-4 py-2 rounded-xl text-sm font-semibold transition-all flex items-center gap-1.5 bg-blue-600 text-white opacity-75 hover:opacity-100 hover:bg-blue-700">
+                    <span>📅</span> <span>Calendar</span>
+                    <span id="nav-reminder-badge" class="hidden ml-1 px-1.5 py-0.2 bg-white text-blue-700 rounded-full text-xs font-bold">0</span>
+                </button>
+                <button onclick="switchSection('todo')" id="nav-todo" class="nav-btn px-4 py-2 rounded-xl text-sm font-semibold transition-all flex items-center gap-1.5 bg-blue-600 text-white opacity-75 hover:opacity-100 hover:bg-blue-700">
+                    <span>📋</span> <span>To-Do List</span>
+                </button>
+                <button onclick="switchSection('habits')" id="nav-habits" class="nav-btn px-4 py-2 rounded-xl text-sm font-semibold transition-all flex items-center gap-1.5 bg-blue-600 text-white opacity-75 hover:opacity-100 hover:bg-blue-700">
+                    <span>🌱</span> <span>Habit Tracker</span>
+                </button>
+            </nav>
+        </div>
+    </header>
+
+    <!-- Main Content Container -->
+    <main class="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-8">
+
+        <!-- ==========================================
+             SECTION 1: POMODORO, STOPWATCH & TIMER
+             ========================================== -->
+        <section id="section-timer" class="space-y-8">
+            <!-- Top Focusing Task Selector -->
+            <div class="max-w-xl mx-auto bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
+                <label class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
+                    🎯 Current Focusing Task
+                </label>
+                <div class="flex flex-col sm:flex-row gap-2">
+                    <select id="focus-task-select" onchange="handleFocusTaskSelect(this.value)" class="flex-1 bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-600">
+                        <!-- Dynamically populated from To-Do list + custom option -->
+                    </select>
+                    <input type="text" id="custom-focus-input" placeholder="Or type a custom focus task..." oninput="setCustomFocusTask(this.value)" class="flex-1 bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-600">
+                </div>
+                <div class="mt-2.5 flex items-center justify-between text-xs text-slate-500 px-1">
+                    <span>Focusing on: <strong id="active-focus-label" class="text-blue-600 font-semibold">Deep Work Session</strong></span>
+                    <span id="focus-task-status-pill" class="hidden px-2 py-0.5 rounded-full text-[11px] font-semibold"></span>
+                </div>
+            </div>
+
+            <!-- Main Mode Switcher (Pomodoro / Custom Timer / Stopwatch) -->
+            <div class="flex flex-wrap justify-center gap-2">
+                <button onclick="setClockMode('pomodoro')" id="mode-btn-pomodoro" class="px-4 py-2 rounded-xl text-sm font-semibold bg-blue-600 text-white shadow-sm transition">
+                    🍅 Pomodoro
+                </button>
+                <button onclick="setClockMode('timer')" id="mode-btn-timer" class="px-4 py-2 rounded-xl text-sm font-semibold bg-blue-50 text-blue-700 hover:bg-blue-100 transition">
+                    ⏳ Countdown Timer
+                </button>
+                <button onclick="setClockMode('stopwatch')" id="mode-btn-stopwatch" class="px-4 py-2 rounded-xl text-sm font-semibold bg-blue-50 text-blue-700 hover:bg-blue-100 transition">
+                    ⏱️ Stopwatch
+                </button>
+            </div>
+
+            <!-- Sub-controls for Pomodoro Presets -->
+            <div id="pomo-subcontrols" class="flex justify-center gap-2">
+                <button onclick="setPomodoroPhase('work', 25)" id="pomo-work" class="px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-blue-600 text-white transition">
+                    Focus (25m)
+                </button>
+                <button onclick="setPomodoroPhase('short', 5)" id="pomo-short" class="px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-blue-50 text-blue-700 hover:bg-blue-100 transition">
+                    Short Break (5m)
+                </button>
+                <button onclick="setPomodoroPhase('long', 15)" id="pomo-long" class="px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-blue-50 text-blue-700 hover:bg-blue-100 transition">
+                    Long Break (15m)
+                </button>
+            </div>
+
+            <!-- Sub-controls for Custom Countdown Timer -->
+            <div id="custom-timer-subcontrols" class="hidden flex items-center justify-center gap-2">
+                <div class="flex items-center gap-1.5 bg-white border border-slate-200 rounded-xl px-3 py-1.5">
+                    <label class="text-xs font-semibold text-slate-500">Min:</label>
+                    <input type="number" id="custom-min-input" min="0" max="180" value="10" class="w-14 text-center font-mono-num text-sm font-bold text-slate-800 focus:outline-none">
+                </div>
+                <div class="flex items-center gap-1.5 bg-white border border-slate-200 rounded-xl px-3 py-1.5">
+                    <label class="text-xs font-semibold text-slate-500">Sec:</label>
+                    <input type="number" id="custom-sec-input" min="0" max="59" value="0" class="w-14 text-center font-mono-num text-sm font-bold text-slate-800 focus:outline-none">
+                </div>
+                <button onclick="applyCustomTimer()" class="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-3.5 py-2.5 rounded-xl transition shadow-sm">
+                    Set Time
+                </button>
+            </div>
+
+            <!-- Circular Progress Timer with Digital Display & Current Real-World Time Inside -->
+            <div class="flex flex-col items-center justify-center">
+                <div class="relative w-72 h-72 sm:w-80 sm:h-80 flex items-center justify-center">
+                    <svg class="w-full h-full" viewBox="0 0 280 280">
+                        <!-- Background Track Circle -->
+                        <circle
+                            cx="140"
+                            cy="140"
+                            r="124"
+                            fill="transparent"
+                            stroke="#E2E8F0"
+                            stroke-width="10"
+                        />
+                        <!-- Animated Blue Progress Circle -->
+                        <circle
+                            id="timer-progress-circle"
+                            class="progress-ring__circle"
+                            cx="140"
+                            cy="140"
+                            r="124"
+                            fill="transparent"
+                            stroke="#2563EB"
+                            stroke-width="10"
+                            stroke-linecap="round"
+                            stroke-dasharray="779.11"
+                            stroke-dashoffset="0"
+                        />
+                    </svg>
+
+                    <!-- Digital Readout Inside the Circle -->
+                    <div class="absolute inset-0 flex flex-col items-center justify-center text-center px-6">
+                        <span id="timer-mode-badge" class="text-[11px] font-bold uppercase tracking-widest text-blue-600 bg-blue-50 px-2.5 py-0.5 rounded-full mb-2">
+                            POMODORO • FOCUS
+                        </span>
+
+                        <!-- Main Digital Timer Display -->
+                        <div id="digital-timer-display" class="font-mono-num text-5xl sm:text-6xl font-bold tracking-tight text-slate-900 my-1">
+                            25:00
+                        </div>
+
+                        <!-- Progress Percentage Pill -->
+                        <div id="timer-percent-label" class="text-xs font-medium text-slate-400 mb-3">
+                            0% Completed
+                        </div>
+
+                        <!-- Divider -->
+                        <div class="w-24 h-px bg-slate-200 mb-2.5"></div>
+
+                        <!-- Current Real-World Clock Inside Circle -->
+                        <div class="flex flex-col items-center">
+                            <span class="text-[10px] uppercase tracking-wider font-semibold text-slate-400">Current Time</span>
+                            <span id="real-world-clock" class="font-mono-num text-xs sm:text-sm font-semibold text-slate-700 mt-0.5">
+                                12:00:00 PM
+                            </span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Primary Blue Controls (Start / Pause / Reset / Lap) -->
+                <div class="flex items-center gap-3 mt-6">
+                    <button onclick="toggleTimerStartPause()" id="timer-start-btn" class="bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-semibold px-7 py-3 rounded-xl shadow-sm transition flex items-center gap-2 text-sm">
+                        <span id="timer-start-icon">▶</span>
+                        <span id="timer-start-text">Start</span>
+                    </button>
+                    <button onclick="resetTimer()" class="bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-semibold px-5 py-3 rounded-xl shadow-sm transition text-sm">
+                        ↺ Reset
+                    </button>
+                    <button onclick="recordStopwatchLap()" id="stopwatch-lap-btn" class="hidden bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-semibold px-5 py-3 rounded-xl shadow-sm transition text-sm">
+                        🏁 Lap
+                    </button>
+                </div>
+
+                <!-- Stopwatch Laps List (Only shown in Stopwatch mode) -->
+                <div id="stopwatch-laps-container" class="hidden w-full max-w-md mt-6 bg-white border border-slate-200 rounded-2xl p-4">
+                    <div class="flex items-center justify-between mb-2">
+                        <h4 class="text-xs font-bold uppercase tracking-wider text-slate-400">Recorded Laps</h4>
+                        <button onclick="clearStopwatchLaps()" class="text-xs text-blue-600 hover:underline font-medium">Clear</button>
+                    </div>
+                    <div id="stopwatch-laps-list" class="max-h-40 overflow-y-auto divide-y divide-slate-100 text-sm">
+                        <p class="text-xs text-slate-400 py-2 text-center">No laps recorded yet.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ==========================================
+             SECTION 2: CALENDAR & REMINDERS
+             ========================================== -->
+        <section id="section-calendar" class="hidden space-y-6">
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                <!-- Left Column: Interactive Monthly Calendar Grid (7 cols) -->
+                <div class="lg:col-span-7 bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
+                    <div class="flex items-center justify-between mb-5">
+                        <div>
+                            <h2 id="cal-month-year" class="text-xl font-bold text-slate-900">October 2026</h2>
+                            <p class="text-xs text-slate-500">Click any date to jot down important notes or set a reminder</p>
+                        </div>
+                        <div class="flex items-center gap-1.5">
+                            <button onclick="changeCalendarMonth(-1)" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-xl text-xs font-semibold transition">
+                                ← Prev
+                            </button>
+                            <button onclick="goToTodayCalendar()" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-xl text-xs font-semibold transition">
+                                Today
+                            </button>
+                            <button onclick="changeCalendarMonth(1)" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-xl text-xs font-semibold transition">
+                                Next →
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Weekday Headers -->
+                    <div class="grid grid-cols-7 gap-1.5 text-center mb-2">
+                        <div class="text-xs font-bold text-slate-400 py-1">Sun</div>
+                        <div class="text-xs font-bold text-slate-400 py-1">Mon</div>
+                        <div class="text-xs font-bold text-slate-400 py-1">Tue</div>
+                        <div class="text-xs font-bold text-slate-400 py-1">Wed</div>
+                        <div class="text-xs font-bold text-slate-400 py-1">Thu</div>
+                        <div class="text-xs font-bold text-slate-400 py-1">Fri</div>
+                        <div class="text-xs font-bold text-slate-400 py-1">Sat</div>
+                    </div>
+
+                    <!-- Days Grid -->
+                    <div id="calendar-days-grid" class="grid grid-cols-7 gap-1.5">
+                        <!-- Populated by JS -->
+                    </div>
+                </div>
+
+                <!-- Right Column: Selected Date Event Jot Pad & Reminders List (5 cols) -->
+                <div class="lg:col-span-5 space-y-6">
+                    <!-- Add / View Event for Selected Date -->
+                    <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
+                        <div class="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
+                            <div>
+                                <span class="text-[11px] font-bold uppercase tracking-wider text-blue-600">Selected Date</span>
+                                <h3 id="selected-date-heading" class="text-base font-bold text-slate-900">Oct 14, 2026</h3>
+                            </div>
+                            <span class="text-xl">📌</span>
+                        </div>
+
+                        <form onsubmit="addCalendarEvent(event)" class="space-y-3">
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-600 mb-1">Important Date / Note Title</label>
+                                <input type="text" id="cal-event-title" required placeholder="e.g., Project Milestone Review" class="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600">
+                            </div>
+
+                            <div class="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label class="block text-xs font-semibold text-slate-600 mb-1">Reminder Time</label>
+                                    <input type="time" id="cal-event-time" value="09:00" class="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm font-mono-num focus:outline-none focus:ring-2 focus:ring-blue-600">
+                                </div>
+                                <div class="flex flex-col justify-end">
+                                    <label class="flex items-center gap-2 cursor-pointer bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 select-none">
+                                        <input type="checkbox" id="cal-event-reminder-toggle" checked class="rounded text-blue-600 focus:ring-blue-600 w-4 h-4">
+                                        <span>🔔 Alert Reminder</span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-600 mb-1">Details / Memo (Optional)</label>
+                                <textarea id="cal-event-notes" rows="2" placeholder="Jot down extra details..." class="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600"></textarea>
+                            </div>
+
+                            <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 rounded-xl text-sm shadow-sm transition">
+                                + Save Date & Reminder
+                            </button>
+                        </form>
+
+                        <!-- Events on Selected Date -->
+                        <div class="mt-5 pt-4 border-t border-slate-100">
+                            <h4 class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2.5">Notes on this Date</h4>
+                            <div id="selected-date-events-list" class="space-y-2">
+                                <!-- Populated by JS -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- All Upcoming Important Dates & Active Reminders -->
+                    <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
+                        <div class="flex items-center justify-between mb-3">
+                            <h3 class="text-sm font-bold text-slate-900 flex items-center gap-1.5">
+                                <span>⏰</span> <span>Upcoming Dates & Reminders</span>
+                            </h3>
+                            <span id="upcoming-count-badge" class="text-xs font-semibold text-blue-600 bg-blue-50 px-2.5 py-0.5 rounded-full">0</span>
+                        </div>
+                        <div id="all-upcoming-reminders-list" class="space-y-2.5 max-h-64 overflow-y-auto pr-1">
+                            <!-- Populated by JS -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ==========================================
+             SECTION 3: TO-DO LIST (DAY / WEEKLY / MONTHLY + COLOR STATUS)
+             ========================================== -->
+        <section id="section-todo" class="hidden space-y-6">
+            <!-- Header & View Switcher (Day / Weekly / Monthly) -->
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
+                <div>
+                    <h2 class="text-xl font-bold text-slate-900">To-Do Classification Board</h2>
+                    <p class="text-xs text-slate-500 mt-0.5">Click any task's status button to cycle between Not Working (Red), In Progress (Orange), and Done (Green)</p>
+                </div>
+
+                <!-- Day / Weekly / Monthly Blue View Switcher -->
+                <div class="flex items-center gap-2">
+                    <button onclick="setTodoView('day')" id="todo-view-day" class="px-4 py-2 rounded-xl text-xs font-semibold bg-blue-600 text-white shadow-sm transition">
+                        Day View
+                    </button>
+                    <button onclick="setTodoView('weekly')" id="todo-view-weekly" class="px-4 py-2 rounded-xl text-xs font-semibold bg-blue-50 text-blue-700 hover:bg-blue-100 transition">
+                        Weekly View
+                    </button>
+                    <button onclick="setTodoView('monthly')" id="todo-view-monthly" class="px-4 py-2 rounded-xl text-xs font-semibold bg-blue-50 text-blue-700 hover:bg-blue-100 transition">
+                        Monthly View
+                    </button>
+                </div>
+            </div>
+
+            <!-- Add New Task Form -->
+            <form onsubmit="addTodoTask(event)" class="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex flex-col md:flex-row gap-3 items-stretch md:items-center">
+                <input type="text" id="todo-input-title" required placeholder="Add a new task for this view..." class="flex-1 bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600">
+                
+                <select id="todo-input-timeframe" class="bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-600">
+                    <option value="day">📅 Day Task</option>
+                    <option value="weekly">🗓️ Weekly Goal</option>
+                    <option value="monthly">📆 Monthly Target</option>
+                </select>
+
+                <select id="todo-input-status" class="bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-600">
+                    <option value="not_working">🔴 Not Working</option>
+                    <option value="in_progress">🟠 In Progress</option>
+                    <option value="done">🟢 Done</option>
+                </select>
+
+                <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-5 py-2.5 rounded-xl text-sm shadow-sm transition shrink-0">
+                    + Add Task
+                </button>
+            </form>
+
+            <!-- 3 Classification Columns: Not Working (Red), In Progress (Orange), Done (Green) -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
+                <!-- Column 1: Not Working (Red #EF4444) -->
+                <div class="bg-white border-2 border-red-200 rounded-2xl p-4 shadow-sm flex flex-col">
+                    <div class="flex items-center justify-between pb-3 mb-3 border-b border-red-100">
+                        <div class="flex items-center gap-2">
+                            <span class="w-3 h-3 rounded-full bg-red-500"></span>
+                            <h3 class="font-bold text-sm text-red-600 uppercase tracking-wider">Not Working</h3>
+                        </div>
+                        <span id="count-not-working" class="text-xs font-bold px-2.5 py-0.5 rounded-full bg-red-50 text-red-600 border border-red-200">0</span>
+                    </div>
+                    <div id="todo-col-not-working" class="space-y-2.5 flex-1 min-h-[180px]">
+                        <!-- Populated by JS -->
+                    </div>
+                </div>
+
+                <!-- Column 2: In Progress (Orange #F97316) -->
+                <div class="bg-white border-2 border-orange-200 rounded-2xl p-4 shadow-sm flex flex-col">
+                    <div class="flex items-center justify-between pb-3 mb-3 border-b border-orange-100">
+                        <div class="flex items-center gap-2">
+                            <span class="w-3 h-3 rounded-full bg-orange-500"></span>
+                            <h3 class="font-bold text-sm text-orange-600 uppercase tracking-wider">In Progress</h3>
+                        </div>
+                        <span id="count-in-progress" class="text-xs font-bold px-2.5 py-0.5 rounded-full bg-orange-50 text-orange-600 border border-orange-200">0</span>
+                    </div>
+                    <div id="todo-col-in-progress" class="space-y-2.5 flex-1 min-h-[180px]">
+                        <!-- Populated by JS -->
+                    </div>
+                </div>
+
+                <!-- Column 3: Done (Green #22C55E) -->
+                <div class="bg-white border-2 border-green-200 rounded-2xl p-4 shadow-sm flex flex-col">
+                    <div class="flex items-center justify-between pb-3 mb-3 border-b border-green-100">
+                        <div class="flex items-center gap-2">
+                            <span class="w-3 h-3 rounded-full bg-green-500"></span>
+                            <h3 class="font-bold text-sm text-green-600 uppercase tracking-wider">Done</h3>
+                        </div>
+                        <span id="count-done" class="text-xs font-bold px-2.5 py-0.5 rounded-full bg-green-50 text-green-600 border border-green-200">0</span>
+                    </div>
+                    <div id="todo-col-done" class="space-y-2.5 flex-1 min-h-[180px]">
+                        <!-- Populated by JS -->
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ==========================================
+             SECTION 4: HABIT TRACKER (ICONS + DAILY/WEEKLY/MONTHLY/YEARLY)
+             ========================================== -->
+        <section id="section-habits" class="hidden space-y-6">
+            <!-- Top Bar & View Switcher (Daily / Weekly / Monthly / Yearly) -->
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
+                <div>
+                    <h2 class="text-xl font-bold text-slate-900">Habit Tracker & Analytics</h2>
+                    <p class="text-xs text-slate-500 mt-0.5">Choose an icon, set target days & daily check-in frequency, and monitor your completion rate</p>
+                </div>
+
+                <!-- View Switcher: Daily / Weekly / Monthly / Yearly -->
+                <div class="flex flex-wrap items-center gap-1.5">
+                    <button onclick="setHabitView('daily')" id="habit-view-daily" class="px-3.5 py-2 rounded-xl text-xs font-semibold bg-blue-600 text-white shadow-sm transition">
+                        Daily
+                    </button>
+                    <button onclick="setHabitView('weekly')" id="habit-view-weekly" class="px-3.5 py-2 rounded-xl text-xs font-semibold bg-blue-50 text-blue-700 hover:bg-blue-100 transition">
+                        Weekly
+                    </button>
+                    <button onclick="setHabitView('monthly')" id="habit-view-monthly" class="px-3.5 py-2 rounded-xl text-xs font-semibold bg-blue-50 text-blue-700 hover:bg-blue-100 transition">
+                        Monthly
+                    </button>
+                    <button onclick="setHabitView('yearly')" id="habit-view-yearly" class="px-3.5 py-2 rounded-xl text-xs font-semibold bg-blue-50 text-blue-700 hover:bg-blue-100 transition">
+                        Yearly
+                    </button>
+                </div>
+            </div>
+
+            <!-- Create New Habit Card -->
+            <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
+                <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3">Create New Habit Goal</h3>
+                <form onsubmit="addNewHabit(event)" class="space-y-4">
+                    <!-- Icon Picker Row -->
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1.5">1. Choose an Icon</label>
+                        <div id="habit-icon-picker" class="flex flex-wrap gap-2">
+                            <!-- Populated by JS -->
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">2. Habit Name</label>
+                            <input type="text" id="habit-name-input" required placeholder="e.g., Drink Water, Read 20 Pages" class="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">3. Days Needed to Complete Habit</label>
+                            <input type="number" id="habit-target-days-input" min="1" max="365" value="21" required class="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2 text-sm font-mono-num focus:outline-none focus:ring-2 focus:ring-blue-600">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">4. Daily Check-Ins Required</label>
+                            <input type="number" id="habit-daily-freq-input" min="1" max="20" value="3" required class="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2 text-sm font-mono-num focus:outline-none focus:ring-2 focus:ring-blue-600">
+                        </div>
+                    </div>
+
+                    <div class="flex justify-end">
+                        <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-6 py-2.5 rounded-xl text-sm shadow-sm transition">
+                            + Start Tracking Habit
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Active View Context Banner -->
+            <div class="flex items-center justify-between px-1">
+                <p id="habit-view-description" class="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                    Viewing: Daily Progress & Overall Goal Metrics
+                </p>
+            </div>
+
+            <!-- Habit Cards Grid -->
+            <div id="habits-grid" class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <!-- Populated by JS -->
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Minimal Footer -->
+    <footer class="border-t border-slate-100 py-5 mt-12 text-center text-xs text-slate-400">
+        FocusHub Minimal Productivity Suite • Data automatically saved to your browser
+    </footer>
+
+    <!-- Application Logic -->
+    <script>
+        /**************************************************************
+         * STATE & PERSISTENCE INITIALIZATION
+         **************************************************************/
+        const STORAGE_KEY = 'focushub_minimal_v1';
+        const HABIT_ICONS = ['💧', '📚', '🏋️', '🧘', '💻', '🥗', '🏃', '😴', '✍️', '🎸', '🧠', '☀️'];
+
+        // Helper for getting today's date string in YYYY-MM-DD
+        function getDateStr(dateObj = new Date()) {
+            const y = dateObj.getFullYear();
+            const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+            const d = String(dateObj.getDate()).padStart(2, '0');
+            return `${y}-${m}-${d}`;
+        }
+
+        const todayKey = getDateStr();
+
+        // Default Initial State with rich sample items
+        const defaultState = {
+            activeFocusTask: 'Complete UI Prototype',
+            todos: [
+                { id: 't1', title: 'Complete UI Prototype', timeframe: 'day', status: 'in_progress' },
+                { id: 't2', title: 'Review Morning Analytics', timeframe: 'day', status: 'done' },
+                { id: 't3', title: 'Fix API Legacy Endpoint', timeframe: 'day', status: 'not_working' },
+                { id: 't4', title: 'Publish Weekly Sprint Summary', timeframe: 'weekly', status: 'in_progress' },
+                { id: 't5', title: 'Organize Team Design System', timeframe: 'weekly', status: 'not_working' },
+                { id: 't6', title: 'Q4 Product Roadmap Pitch', timeframe: 'monthly', status: 'in_progress' }
+            ],
+            events: [
+                {
+                    id: 'e1',
+                    date: todayKey,
+                    title: 'Team Standup & Sync',
+                    time: '10:00',
+                    reminder: true,
+                    notified: false,
+                    notes: 'Share progress on the minimal productivity app.'
+                },
+                {
+                    id: 'e2',
+                    date: getDateStr(new Date(Date.now() + 86400000 * 2)),
+                    title: 'Design Review Presentation',
+                    time: '14:30',
+                    reminder: true,
+                    notified: false,
+                    notes: 'Prepare slides and timer demo.'
+                }
+            ],
+            habits: [
+                {
+                    id: 'h1',
+                    name: 'Hydration (Drink Water)',
+                    icon: '💧',
+                    targetDays: 21,
+                    dailyRequired: 4,
+                    completedDaysCount: 8, // Past completed days prior to today
+                    totalCheckInsAllTime: 34, // Includes past check-ins
+                    history: {
+                        [todayKey]: 2
+                    }
+                },
+                {
+                    id: 'h2',
+                    name: 'Deep Reading Session',
+                    icon: '📚',
+                    targetDays: 30,
+                    dailyRequired: 2,
+                    completedDaysCount: 14,
+                    totalCheckInsAllTime: 30,
+                    history: {
+                        [todayKey]: 2
+                    }
+                }
+            ]
+        };
+
+        let appState = loadState();
+
+        function loadState() {
+            try {
+                const raw = localStorage.getItem(STORAGE_KEY);
+                if (!raw) return JSON.parse(JSON.stringify(defaultState));
+                const parsed = JSON.parse(raw);
+                return { ...defaultState, ...parsed };
+            } catch (e) {
+                return JSON.parse(JSON.stringify(defaultState));
+            }
+        }
+
+        function saveState() {
+            try {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(appState));
+            } catch (e) {
+                console.error('Failed to save state:', e);
+            }
+        }
+
+        function showToast(message, icon = '✨') {
+            const box = document.getElementById('toast-box');
+            document.getElementById('toast-icon').textContent = icon;
+            document.getElementById('toast-text').textContent = message;
+            box.classList.remove('hidden');
+            clearTimeout(window.toastTimeout);
+            window.toastTimeout = setTimeout(() => {
+                box.classList.add('hidden');
+            }, 2400);
+        }
+
+        // Gentle synthesizer chime via Tone.js
+        function playChime() {
+            try {
+                if (typeof Tone !== 'undefined') {
+                    Tone.start();
+                    const synth = new Tone.PolySynth(Tone.Synth).toDestination();
+                    const now = Tone.now();
+                    synth.triggerAttackRelease(['C5', 'E5', 'G5'], '8n', now);
+                    synth.triggerAttackRelease(['G5', 'C6'], '4n', now + 0.2);
+                }
+            } catch (err) {
+                // Audio fallback silent
+            }
+        }
+
+        /**************************************************************
+         * NAVIGATION SWITCHER
+         **************************************************************/
+        function switchSection(sectionId) {
+            const sections = ['timer', 'calendar', 'todo', 'habits'];
+            sections.forEach(s => {
+                const el = document.getElementById(`section-${s}`);
+                const btn = document.getElementById(`nav-${s}`);
+                if (s === sectionId) {
+                    el.classList.remove('hidden');
+                    btn.classList.remove('opacity-75');
+                    btn.classList.add('ring-2', 'ring-blue-300');
+                } else {
+                    el.classList.add('hidden');
+                    btn.classList.add('opacity-75');
+                    btn.classList.remove('ring-2', 'ring-blue-300');
+                }
+            });
+        }
+
+        /**************************************************************
+         * 1. POMODORO, STOPWATCH & TIMER + REAL-WORLD CLOCK
+         **************************************************************/
+        const CIRCLE_RADIUS = 124;
+        const CIRCLE_CIRCUMFERENCE = 2 * Math.PI * CIRCLE_RADIUS; // ~779.11
+
+        let clockMode = 'pomodoro'; // 'pomodoro' | 'timer' | 'stopwatch'
+        let pomoPhase = 'work';     // 'work' | 'short' | 'long'
+        let totalSeconds = 25 * 60;
+        let remainingSeconds = 25 * 60;
+        let stopwatchElapsedMs = 0;
+        let timerRunning = false;
+        let timerInterval = null;
+        let lastTickTimestamp = null;
+        let stopwatchLaps = [];
+
+        function updateRealWorldClock() {
+            const now = new Date();
+            const timeString = now.toLocaleTimeString([], {
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: true
+            });
+            const clockEl = document.getElementById('real-world-clock');
+            if (clockEl) clockEl.textContent = timeString;
+
+            // Check calendar reminders every second when seconds === 0 or within current minute
+            checkCalendarReminders(now);
+        }
+
+        function populateFocusTaskDropdown() {
+            const select = document.getElementById('focus-task-select');
+            const activeLabel = document.getElementById('active-focus-label');
+            const pill = document.getElementById('focus-task-status-pill');
+
+            select.innerHTML = `<option value="">-- Choose from To-Do List --</option>`;
+            appState.todos.forEach(task => {
+                const statusDot = task.status === 'done' ? '🟢' : task.status === 'in_progress' ? '🟠' : '🔴';
+                const opt = document.createElement('option');
+                opt.value = task.id;
+                opt.textContent = `${statusDot} [${task.timeframe.toUpperCase()}] ${task.title}`;
+                if (appState.activeFocusTask === task.title) {
+                    opt.selected = true;
+                }
+                select.appendChild(opt);
+            });
+
+            activeLabel.textContent = appState.activeFocusTask || 'Deep Work Session';
+
+            // Update status pill if matched with a task
+            const matched = appState.todos.find(t => t.title === appState.activeFocusTask);
+            if (matched) {
+                pill.classList.remove('hidden');
+                if (matched.status === 'not_working') {
+                    pill.className = 'px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-red-100 text-red-700';
+                    pill.textContent = 'Not Working';
+                } else if (matched.status === 'in_progress') {
+                    pill.className = 'px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-orange-100 text-orange-700';
+                    pill.textContent = 'In Progress';
+                } else {
+                    pill.className = 'px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-green-100 text-green-700';
+                    pill.textContent = 'Done';
+                }
+            } else {
+                pill.classList.add('hidden');
+            }
+        }
+
+        function handleFocusTaskSelect(taskId) {
+            if (!taskId) return;
+            const found = appState.todos.find(t => t.id === taskId);
+            if (found) {
+                appState.activeFocusTask = found.title;
+                document.getElementById('custom-focus-input').value = '';
+                saveState();
+                populateFocusTaskDropdown();
+                showToast(`Focusing on: ${found.title}`, '🎯');
+            }
+        }
+
+        function setCustomFocusTask(val) {
+            const clean = val.trim();
+            if (clean) {
+                appState.activeFocusTask = clean;
+                document.getElementById('focus-task-select').value = '';
+                saveState();
+                document.getElementById('active-focus-label').textContent = clean;
+                document.getElementById('focus-task-status-pill').classList.add('hidden');
+            }
+        }
+
+        function setClockMode(mode) {
+            pauseTimerInternal();
+            clockMode = mode;
+
+            // Update mode buttons styling
+            ['pomodoro', 'timer', 'stopwatch'].forEach(m => {
+                const btn = document.getElementById(`mode-btn-${m}`);
+                if (m === mode) {
+                    btn.className = 'px-4 py-2 rounded-xl text-sm font-semibold bg-blue-600 text-white shadow-sm transition';
+                } else {
+                    btn.className = 'px-4 py-2 rounded-xl text-sm font-semibold bg-blue-50 text-blue-700 hover:bg-blue-100 transition';
+                }
+            });
+
+            // Show/hide subcontrols
+            document.getElementById('pomo-subcontrols').classList.toggle('hidden', mode !== 'pomodoro');
+            document.getElementById('custom-timer-subcontrols').classList.toggle('hidden', mode !== 'timer');
+            document.getElementById('stopwatch-lap-btn').classList.toggle('hidden', mode !== 'stopwatch');
+            document.getElementById('stopwatch-laps-container').classList.toggle('hidden', mode !== 'stopwatch');
+
+            if (mode === 'pomodoro') {
+                setPomodoroPhase('work', 25);
+            } else if (mode === 'timer') {
+                applyCustomTimer();
+            } else if (mode === 'stopwatch') {
+                stopwatchElapsedMs = 0;
+                document.getElementById('timer-mode-badge').textContent = 'STOPWATCH MODE';
+                updateTimerVisuals();
+            }
+        }
+
+        function setPomodoroPhase(phase, minutes) {
+            pauseTimerInternal();
+            pomoPhase = phase;
+            totalSeconds = minutes * 60;
+            remainingSeconds = totalSeconds;
+
+            const phases = [
+                { id: 'work', label: 'POMODORO • FOCUS' },
+                { id: 'short', label: 'POMODORO • SHORT BREAK' },
+                { id: 'long', label: 'POMODORO • LONG BREAK' }
+            ];
+
+            phases.forEach(p => {
+                const btn = document.getElementById(`pomo-${p.id}`);
+                if (p.id === phase) {
+                    btn.className = 'px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-blue-600 text-white transition';
+                    document.getElementById('timer-mode-badge').textContent = p.label;
+                } else {
+                    btn.className = 'px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-blue-50 text-blue-700 hover:bg-blue-100 transition';
+                }
+            });
+
+            updateTimerVisuals();
+        }
+
+        function applyCustomTimer() {
+            pauseTimerInternal();
+            const mins = Math.max(0, parseInt(document.getElementById('custom-min-input').value, 10) || 0);
+            const secs = Math.max(0, Math.min(59, parseInt(document.getElementById('custom-sec-input').value, 10) || 0));
+            const total = Math.max(1, mins * 60 + secs);
+            totalSeconds = total;
+            remainingSeconds = total;
+            document.getElementById('timer-mode-badge').textContent = 'CUSTOM COUNTDOWN';
+            updateTimerVisuals();
+        }
+
+        function formatSecondsMMSS(sec) {
+            const m = Math.floor(sec / 60);
+            const s = Math.floor(sec % 60);
+            return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+        }
+
+        function formatStopwatch(ms) {
+            const totalSecs = Math.floor(ms / 1000);
+            const mins = Math.floor(totalSecs / 60);
+            const secs = totalSecs % 60;
+            const centis = Math.floor((ms % 1000) / 10);
+            return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}.${String(centis).padStart(2, '0')}`;
+        }
+
+        function updateTimerVisuals() {
+            const circle = document.getElementById('timer-progress-circle');
+            const display = document.getElementById('digital-timer-display');
+            const percentLabel = document.getElementById('timer-percent-label');
+
+            if (clockMode === 'stopwatch') {
+                display.textContent = formatStopwatch(stopwatchElapsedMs);
+                // In stopwatch mode, the circle completes 1 full revolution every 60 seconds
+                const secFraction = (stopwatchElapsedMs % 60000) / 60000;
+                const offset = CIRCLE_CIRCUMFERENCE * (1 - secFraction);
+                circle.style.strokeDashoffset = offset;
+                const totalSecs = Math.floor(stopwatchElapsedMs / 1000);
+                percentLabel.textContent = `Elapsed: ${totalSecs}s`;
+            } else {
+                display.textContent = formatSecondsMMSS(remainingSeconds);
+                const progress = totalSeconds > 0 ? (totalSeconds - remainingSeconds) / totalSeconds : 0;
+                const offset = CIRCLE_CIRCUMFERENCE * (1 - progress);
+                circle.style.strokeDashoffset = offset;
+                const pct = Math.min(100, Math.round(progress * 100));
+                percentLabel.textContent = `${pct}% Completed`;
+            }
+        }
+
+        function toggleTimerStartPause() {
+            if (timerRunning) {
+                pauseTimerInternal();
+            } else {
+                startTimerInternal();
+            }
+        }
+
+        function startTimerInternal() {
+            if (timerRunning) return;
+            timerRunning = true;
+            document.getElementById('timer-start-icon').textContent = '⏸';
+            document.getElementById('timer-start-text').textContent = 'Pause';
+
+            if (clockMode === 'stopwatch') {
+                lastTickTimestamp = performance.now();
+                timerInterval = setInterval(() => {
+                    const now = performance.now();
+                    stopwatchElapsedMs += (now - lastTickTimestamp);
+                    lastTickTimestamp = now;
+                    updateTimerVisuals();
+                }, 50);
+            } else {
+                if (remainingSeconds <= 0) {
+                    remainingSeconds = totalSeconds;
+                }
+                timerInterval = setInterval(() => {
+                    if (remainingSeconds > 0) {
+                        remainingSeconds--;
+                        updateTimerVisuals();
+                    } else {
+                        pauseTimerInternal();
+                        playChime();
+                        showToast('Session Completed!', '🎉');
+                    }
+                }, 1000);
+            }
+        }
+
+        function pauseTimerInternal() {
+            timerRunning = false;
+            clearInterval(timerInterval);
+            document.getElementById('timer-start-icon').textContent = '▶';
+            document.getElementById('timer-start-text').textContent = 'Start';
+        }
+
+        function resetTimer() {
+            pauseTimerInternal();
+            if (clockMode === 'stopwatch') {
+                stopwatchElapsedMs = 0;
+            } else {
+                remainingSeconds = totalSeconds;
+            }
+            updateTimerVisuals();
+        }
+
+        function recordStopwatchLap() {
+            if (clockMode !== 'stopwatch') return;
+            stopwatchLaps.unshift({
+                index: stopwatchLaps.length + 1,
+                time: formatStopwatch(stopwatchElapsedMs)
+            });
+            renderStopwatchLaps();
+        }
+
+        function clearStopwatchLaps() {
+            stopwatchLaps = [];
+            renderStopwatchLaps();
+        }
+
+        function renderStopwatchLaps() {
+            const list = document.getElementById('stopwatch-laps-list');
+            if (stopwatchLaps.length === 0) {
+                list.innerHTML = `<p class="text-xs text-slate-400 py-2 text-center">No laps recorded yet.</p>`;
+                return;
+            }
+            list.innerHTML = stopwatchLaps.map(lap => `
+                <div class="flex items-center justify-between py-1.5 px-2">
+                    <span class="text-xs font-semibold text-slate-500">Lap #${lap.index}</span>
+                    <span class="font-mono-num text-xs font-bold text-blue-600">${lap.time}</span>
+                </div>
+            `).join('');
+        }
+
+        /**************************************************************
+         * 2. INTERACTIVE CALENDAR & REMINDER SYSTEM
+         **************************************************************/
+        let calCurrentDate = new Date();
+        let selectedCalendarDateStr = getDateStr(new Date());
+
+        function renderCalendar() {
+            const year = calCurrentDate.getFullYear();
+            const month = calCurrentDate.getMonth();
+
+            const monthNames = [
+                'January', 'February', 'March', 'April', 'May', 'June',
+                'July', 'August', 'September', 'October', 'November', 'December'
+            ];
+            document.getElementById('cal-month-year').textContent = `${monthNames[month]} ${year}`;
+
+            const firstDayOfWeek = new Date(year, month, 1).getDay();
+            const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+            const grid = document.getElementById('calendar-days-grid');
+            grid.innerHTML = '';
+
+            // Blank cells before start of month
+            for (let i = 0; i < firstDayOfWeek; i++) {
+                const empty = document.createElement('div');
+                empty.className = 'h-16 sm:h-20 rounded-xl bg-slate-50/50';
+                grid.appendChild(empty);
+            }
+
+            const todayStr = getDateStr(new Date());
+
+            for (let day = 1; day <= daysInMonth; day++) {
+                const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                const dayEvents = appState.events.filter(e => e.date === dateStr);
+                const isSelected = dateStr === selectedCalendarDateStr;
+                const isToday = dateStr === todayStr;
+
+                const cell = document.createElement('button');
+                cell.type = 'button';
+                cell.onclick = () => selectCalendarDate(dateStr);
+
+                let borderClasses = 'border border-slate-200 hover:border-blue-400 bg-white';
+                if (isSelected) {
+                    borderClasses = 'border-2 border-blue-600 bg-blue-50/40 ring-2 ring-blue-100';
+                }
+
+                cell.className = `h-16 sm:h-20 rounded-xl p-1.5 flex flex-col justify-between text-left transition ${borderClasses}`;
+
+                const topRow = `
+                    <div class="flex items-center justify-between w-full">
+                        <span class="text-xs font-bold ${isToday ? 'bg-blue-600 text-white px-1.5 py-0.5 rounded-md' : 'text-slate-700'}">
+                            ${day}
+                        </span>
+                        ${dayEvents.some(e => e.reminder) ? '<span class="text-[10px]">🔔</span>' : ''}
+                    </div>
+                `;
+
+                const eventPills = dayEvents.slice(0, 2).map(e => `
+                    <div class="truncate text-[10px] font-medium px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 w-full">
+                        ${e.title}
+                    </div>
+                `).join('');
+
+                cell.innerHTML = `
+                    ${topRow}
+                    <div class="space-y-0.5 w-full overflow-hidden">
+                        ${eventPills}
+                        ${dayEvents.length > 2 ? `<div class="text-[9px] text-slate-400 font-semibold">+${dayEvents.length - 2} more</div>` : ''}
+                    </div>
+                `;
+                grid.appendChild(cell);
+            }
+
+            renderSelectedDateEvents();
+            renderUpcomingReminders();
+        }
+
+        function selectCalendarDate(dateStr) {
+            selectedCalendarDateStr = dateStr;
+            renderCalendar();
+        }
+
+        function changeCalendarMonth(delta) {
+            calCurrentDate.setMonth(calCurrentDate.getMonth() + delta);
+            renderCalendar();
+        }
+
+        function goToTodayCalendar() {
+            calCurrentDate = new Date();
+            selectedCalendarDateStr = getDateStr(calCurrentDate);
+            renderCalendar();
+        }
+
+        function renderSelectedDateEvents() {
+            const [y, m, d] = selectedCalendarDateStr.split('-').map(Number);
+            const dateObj = new Date(y, m - 1, d);
+            document.getElementById('selected-date-heading').textContent = dateObj.toLocaleDateString(undefined, {
+                weekday: 'short',
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric'
+            });
+
+            const container = document.getElementById('selected-date-events-list');
+            const dayEvents = appState.events.filter(e => e.date === selectedCalendarDateStr);
+
+            if (dayEvents.length === 0) {
+                container.innerHTML = `<p class="text-xs text-slate-400 italic py-2">No important dates or reminders jotted for this day.</p>`;
+                return;
+            }
+
+            container.innerHTML = dayEvents.map(ev => `
+                <div class="p-3 rounded-xl border border-slate-200 bg-white flex items-start justify-between gap-2">
+                    <div>
+                        <div class="flex items-center gap-2">
+                            <span class="font-bold text-xs text-slate-900">${ev.title}</span>
+                            <span class="font-mono-num text-[11px] font-semibold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md">
+                                ${ev.time || 'All Day'}
+                            </span>
+                            ${ev.reminder ? '<span class="text-xs" title="Reminder On">🔔</span>' : ''}
+                        </div>
+                        ${ev.notes ? `<p class="text-xs text-slate-500 mt-1">${ev.notes}</p>` : ''}
+                    </div>
+                    <button onclick="deleteCalendarEvent('${ev.id}')" class="text-xs text-slate-400 hover:text-red-600 font-bold px-1.5">
+                        ✕
+                    </button>
+                </div>
+            `).join('');
+        }
+
+        function renderUpcomingReminders() {
+            const list = document.getElementById('all-upcoming-reminders-list');
+            const badge = document.getElementById('upcoming-count-badge');
+            const navBadge = document.getElementById('nav-reminder-badge');
+
+            const sorted = [...appState.events].sort((a, b) => {
+                return `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`);
+            });
+
+            badge.textContent = sorted.length;
+            if (sorted.length > 0) {
+                navBadge.textContent = sorted.length;
+                navBadge.classList.remove('hidden');
+            } else {
+                navBadge.classList.add('hidden');
+            }
+
+            if (sorted.length === 0) {
+                list.innerHTML = `<p class="text-xs text-slate-400 text-center py-4">No upcoming important dates saved.</p>`;
+                return;
+            }
+
+            list.innerHTML = sorted.map(ev => `
+                <div class="p-3 rounded-xl border border-slate-200 flex items-center justify-between gap-3 hover:border-blue-300 transition">
+                    <div class="min-w-0">
+                        <div class="flex items-center gap-1.5">
+                            <span class="text-xs font-bold text-slate-800 truncate">${ev.title}</span>
+                        </div>
+                        <div class="flex items-center gap-2 mt-1 text-[11px] text-slate-500 font-mono-num">
+                            <span>📅 ${ev.date}</span>
+                            <span>•</span>
+                            <span>⏰ ${ev.time}</span>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-1.5 shrink-0">
+                        <button onclick="toggleEventReminder('${ev.id}')" class="px-2.5 py-1 rounded-lg text-xs font-semibold transition ${ev.reminder ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500'}">
+                            ${ev.reminder ? '🔔 On' : '🔕 Off'}
+                        </button>
+                        <button onclick="deleteCalendarEvent('${ev.id}')" class="text-slate-400 hover:text-red-500 px-1.5 text-xs font-bold">✕</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function addCalendarEvent(e) {
+            e.preventDefault();
+            const title = document.getElementById('cal-event-title').value.trim();
+            const time = document.getElementById('cal-event-time').value || '09:00';
+            const reminder = document.getElementById('cal-event-reminder-toggle').checked;
+            const notes = document.getElementById('cal-event-notes').value.trim();
+
+            if (!title) return;
+
+            appState.events.push({
+                id: 'ev_' + Date.now(),
+                date: selectedCalendarDateStr,
+                title,
+                time,
+                reminder,
+                notified: false,
+                notes
+            });
+
+            document.getElementById('cal-event-title').value = '';
+            document.getElementById('cal-event-notes').value = '';
+            saveState();
+            renderCalendar();
+            showToast('Important date & reminder saved!', '📅');
+        }
+
+        function toggleEventReminder(eventId) {
+            const ev = appState.events.find(e => e.id === eventId);
+            if (ev) {
+                ev.reminder = !ev.reminder;
+                ev.notified = false;
+                saveState();
+                renderCalendar();
+            }
+        }
+
+        function deleteCalendarEvent(eventId) {
+            appState.events = appState.events.filter(e => e.id !== eventId);
+            saveState();
+            renderCalendar();
+            showToast('Event removed', '🗑️');
+        }
+
+        function checkCalendarReminders(now) {
+            const currentYMD = getDateStr(now);
+            const currentHM = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
+            appState.events.forEach(ev => {
+                if (ev.reminder && !ev.notified && ev.date === currentYMD && ev.time === currentHM) {
+                    ev.notified = true;
+                    saveState();
+                    triggerReminderBanner(ev);
+                }
+            });
+        }
+
+        function triggerReminderBanner(ev) {
+            const banner = document.getElementById('reminder-banner');
+            document.getElementById('reminder-banner-title').textContent = ev.title;
+            document.getElementById('reminder-banner-time').textContent = `${ev.date} at ${ev.time} ${ev.notes ? '— ' + ev.notes : ''}`;
+            banner.classList.remove('hidden');
+            playChime();
+        }
+
+        function dismissReminderBanner() {
+            document.getElementById('reminder-banner').classList.add('hidden');
+        }
+
+        /**************************************************************
+         * 3. TO-DO LIST (DAY / WEEKLY / MONTHLY + COLOR STATUS)
+         **************************************************************/
+        let currentTodoView = 'day'; // 'day' | 'weekly' | 'monthly'
+
+        function setTodoView(view) {
+            currentTodoView = view;
+            document.getElementById('todo-input-timeframe').value = view;
+
+            ['day', 'weekly', 'monthly'].forEach(v => {
+                const btn = document.getElementById(`todo-view-${v}`);
+                if (v === view) {
+                    btn.className = 'px-4 py-2 rounded-xl text-xs font-semibold bg-blue-600 text-white shadow-sm transition';
+                } else {
+                    btn.className = 'px-4 py-2 rounded-xl text-xs font-semibold bg-blue-50 text-blue-700 hover:bg-blue-100 transition';
+                }
+            });
+
+            renderTodos();
+        }
+
+        function addTodoTask(e) {
+            e.preventDefault();
+            const titleInput = document.getElementById('todo-input-title');
+            const timeframe = document.getElementById('todo-input-timeframe').value;
+            const status = document.getElementById('todo-input-status').value;
+            const title = titleInput.value.trim();
+
+            if (!title) return;
+
+            appState.todos.push({
+                id: 'todo_' + Date.now(),
+                title,
+                timeframe,
+                status
+            });
+
+            titleInput.value = '';
+            saveState();
+
+            if (timeframe !== currentTodoView) {
+                setTodoView(timeframe);
+            } else {
+                renderTodos();
+            }
+            populateFocusTaskDropdown();
+            showToast('Task added to board!', '📋');
+        }
+
+        function cycleTodoStatus(taskId) {
+            const order = ['not_working', 'in_progress', 'done'];
+            const task = appState.todos.find(t => t.id === taskId);
+            if (!task) return;
+            const nextIndex = (order.indexOf(task.status) + 1) % order.length;
+            task.status = order[nextIndex];
+            saveState();
+            renderTodos();
+            populateFocusTaskDropdown();
+        }
+
+        function setTodoTaskStatus(taskId, newStatus) {
+            const task = appState.todos.find(t => t.id === taskId);
+            if (!task) return;
+            task.status = newStatus;
+            saveState();
+            renderTodos();
+            populateFocusTaskDropdown();
+        }
+
+        function deleteTodoTask(taskId) {
+            appState.todos = appState.todos.filter(t => t.id !== taskId);
+            saveState();
+            renderTodos();
+            populateFocusTaskDropdown();
+        }
+
+        function sendTaskToFocus(taskId) {
+            const task = appState.todos.find(t => t.id === taskId);
+            if (!task) return;
+            appState.activeFocusTask = task.title;
+            saveState();
+            populateFocusTaskDropdown();
+            switchSection('timer');
+            showToast(`Now focusing on: ${task.title}`, '🎯');
+        }
+
+        function renderTodos() {
+            const filtered = appState.todos.filter(t => t.timeframe === currentTodoView);
+
+            const colNotWorking = document.getElementById('todo-col-not-working');
+            const colInProgress = document.getElementById('todo-col-in-progress');
+            const colDone = document.getElementById('todo-col-done');
+
+            const notWorkingTasks = filtered.filter(t => t.status === 'not_working');
+            const inProgressTasks = filtered.filter(t => t.status === 'in_progress');
+            const doneTasks = filtered.filter(t => t.status === 'done');
+
+            document.getElementById('count-not-working').textContent = notWorkingTasks.length;
+            document.getElementById('count-in-progress').textContent = inProgressTasks.length;
+            document.getElementById('count-done').textContent = doneTasks.length;
+
+            colNotWorking.innerHTML = notWorkingTasks.length
+                ? notWorkingTasks.map(t => createTodoCardHTML(t)).join('')
+                : `<p class="text-xs text-slate-400 text-center py-8">No tasks in Not Working</p>`;
+
+            colInProgress.innerHTML = inProgressTasks.length
+                ? inProgressTasks.map(t => createTodoCardHTML(t)).join('')
+                : `<p class="text-xs text-slate-400 text-center py-8">No tasks in In Progress</p>`;
+
+            colDone.innerHTML = doneTasks.length
+                ? doneTasks.map(t => createTodoCardHTML(t)).join('')
+                : `<p class="text-xs text-slate-400 text-center py-8">No tasks in Done</p>`;
+        }
+
+        function createTodoCardHTML(task) {
+            // Color-coded styles based on status: Not Working (Red), In Progress (Orange), Done (Green)
+            let cardBorder = 'border-red-300 bg-red-50/30';
+            let badgeStyle = 'bg-red-600 text-white';
+            let statusLabel = 'Not Working';
+
+            if (task.status === 'in_progress') {
+                cardBorder = 'border-orange-300 bg-orange-50/30';
+                badgeStyle = 'bg-orange-500 text-white';
+                statusLabel = 'In Progress';
+            } else if (task.status === 'done') {
+                cardBorder = 'border-green-300 bg-green-50/30';
+                badgeStyle = 'bg-green-600 text-white';
+                statusLabel = 'Done';
+            }
+
+            return `
+                <div class="p-3.5 rounded-xl border ${cardBorder} transition shadow-sm space-y-2.5">
+                    <div class="flex items-start justify-between gap-2">
+                        <p class="text-sm font-semibold text-slate-800 ${task.status === 'done' ? 'line-through text-slate-400' : ''}">
+                            ${task.title}
+                        </p>
+                        <button onclick="deleteTodoTask('${task.id}')" class="text-xs text-slate-400 hover:text-red-600 font-bold px-1">
+                            ✕
+                        </button>
+                    </div>
+
+                    <div class="flex flex-wrap items-center justify-between gap-1.5 pt-1">
+                        <!-- Clickable Status Badge that cycles color status -->
+                        <button onclick="cycleTodoStatus('${task.id}')" title="Click to switch status" class="px-2.5 py-1 rounded-lg text-[11px] font-bold ${badgeStyle} shadow-sm hover:opacity-90 transition">
+                            ${statusLabel} ↻
+                        </button>
+
+                        <!-- Quick Status Dots + Focus Link -->
+                        <div class="flex items-center gap-1">
+                            <button onclick="setTodoTaskStatus('${task.id}', 'not_working')" title="Mark Not Working (Red)" class="w-5 h-5 rounded-full bg-red-500 text-white text-[10px] flex items-center justify-center hover:scale-110 transition">R</button>
+                            <button onclick="setTodoTaskStatus('${task.id}', 'in_progress')" title="Mark In Progress (Orange)" class="w-5 h-5 rounded-full bg-orange-500 text-white text-[10px] flex items-center justify-center hover:scale-110 transition">O</button>
+                            <button onclick="setTodoTaskStatus('${task.id}', 'done')" title="Mark Done (Green)" class="w-5 h-5 rounded-full bg-green-500 text-white text-[10px] flex items-center justify-center hover:scale-110 transition">G</button>
+                            <button onclick="sendTaskToFocus('${task.id}')" title="Focus on this task in Timer" class="ml-1 bg-blue-600 hover:bg-blue-700 text-white px-2 py-0.5 rounded-md text-[10px] font-semibold">
+                                Focus
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        /**************************************************************
+         * 4. HABIT TRACKER (ICONS + DAILY/WEEKLY/MONTHLY/YEARLY + EXACT METRICS)
+         **************************************************************/
+        let selectedHabitIcon = HABIT_ICONS[0];
+        let currentHabitView = 'daily'; // 'daily' | 'weekly' | 'monthly' | 'yearly'
+
+        function renderHabitIconPicker() {
+            const container = document.getElementById('habit-icon-picker');
+            container.innerHTML = HABIT_ICONS.map(icon => `
+                <button
+                    type="button"
+                    onclick="selectHabitIcon('${icon}')"
+                    class="w-10 h-10 rounded-xl text-lg flex items-center justify-center border transition ${
+                        selectedHabitIcon === icon
+                            ? 'bg-blue-600 text-white border-blue-600 shadow-sm scale-105'
+                            : 'bg-white border-slate-200 hover:border-blue-400'
+                    }"
+                >
+                    ${icon}
+                </button>
+            `).join('');
+        }
+
+        function selectHabitIcon(icon) {
+            selectedHabitIcon = icon;
+            renderHabitIconPicker();
+        }
+
+        function setHabitView(view) {
+            currentHabitView = view;
+            ['daily', 'weekly', 'monthly', 'yearly'].forEach(v => {
+                const btn = document.getElementById(`habit-view-${v}`);
+                if (v === view) {
+                    btn.className = 'px-3.5 py-2 rounded-xl text-xs font-semibold bg-blue-600 text-white shadow-sm transition';
+                } else {
+                    btn.className = 'px-3.5 py-2 rounded-xl text-xs font-semibold bg-blue-50 text-blue-700 hover:bg-blue-100 transition';
+                }
+            });
+
+            const descriptions = {
+                daily: 'Viewing: Daily View — Check in today & track overall habit goal completion',
+                weekly: 'Viewing: Weekly View (7-Day Window) — Track weekly consistency & overall stats',
+                monthly: 'Viewing: Monthly View (30-Day Window) — Track monthly progress & overall stats',
+                yearly: 'Viewing: Yearly View (365-Day Window) — Track annual mastery & overall stats'
+            };
+            document.getElementById('habit-view-description').textContent = descriptions[view];
+            renderHabits();
+        }
+
+        function addNewHabit(e) {
+            e.preventDefault();
+            const nameInput = document.getElementById('habit-name-input');
+            const targetDaysInput = document.getElementById('habit-target-days-input');
+            const dailyFreqInput = document.getElementById('habit-daily-freq-input');
+
+            const name = nameInput.value.trim();
+            const targetDays = Math.max(1, parseInt(targetDaysInput.value, 10) || 21);
+            const dailyRequired = Math.max(1, parseInt(dailyFreqInput.value, 10) || 1);
+
+            if (!name) return;
+
+            appState.habits.push({
+                id: 'hab_' + Date.now(),
+                name,
+                icon: selectedHabitIcon,
+                targetDays,
+                dailyRequired,
+                completedDaysCount: 0,
+                totalCheckInsAllTime: 0,
+                history: {
+                    [todayKey]: 0
+                }
+            });
+
+            nameInput.value = '';
+            saveState();
+            renderHabits();
+            showToast(`New habit "${name}" created!`, selectedHabitIcon);
+        }
+
+        function checkInHabit(habitId) {
+            const habit = appState.habits.find(h => h.id === habitId);
+            if (!habit) return;
+
+            if (!habit.history) habit.history = {};
+            const prevTodayCount = habit.history[todayKey] || 0;
+            const nextTodayCount = prevTodayCount + 1;
+            habit.history[todayKey] = nextTodayCount;
+            habit.totalCheckInsAllTime = (habit.totalCheckInsAllTime || 0) + 1;
+
+            // If this check-in just reached the daily required threshold, increment completedDaysCount
+            if (prevTodayCount < habit.dailyRequired && nextTodayCount === habit.dailyRequired) {
+                habit.completedDaysCount = (habit.completedDaysCount || 0) + 1;
+                playChime();
+                showToast(`Daily goal achieved for ${habit.name}!`, '🎉');
+            } else {
+                showToast(`+1 Check-In logged for ${habit.name}`, habit.icon);
+            }
+
+            saveState();
+            renderHabits();
+        }
+
+        function resetTodayHabitCheckIn(habitId) {
+            const habit = appState.habits.find(h => h.id === habitId);
+            if (!habit || !habit.history) return;
+            const todayCount = habit.history[todayKey] || 0;
+            if (todayCount === 0) return;
+
+            if (todayCount >= habit.dailyRequired && habit.completedDaysCount > 0) {
+                habit.completedDaysCount--;
+            }
+            habit.totalCheckInsAllTime = Math.max(0, (habit.totalCheckInsAllTime || 0) - todayCount);
+            habit.history[todayKey] = 0;
+            saveState();
+            renderHabits();
+        }
+
+        function deleteHabit(habitId) {
+            appState.habits = appState.habits.filter(h => h.id !== habitId);
+            saveState();
+            renderHabits();
+            showToast('Habit deleted', '🗑️');
+        }
+
+        function renderHabits() {
+            const grid = document.getElementById('habits-grid');
+            if (appState.habits.length === 0) {
+                grid.innerHTML = `<div class="col-span-full bg-white border border-slate-200 rounded-2xl p-8 text-center text-sm text-slate-400">No habits created yet. Add one above to begin tracking!</div>`;
+                return;
+            }
+
+            grid.innerHTML = appState.habits.map(habit => {
+                const todayCheckIns = (habit.history && habit.history[todayKey]) || 0;
+                const completedDays = habit.completedDaysCount || 0;
+                const targetDays = habit.targetDays || 21;
+                const totalCheckIns = habit.totalCheckInsAllTime || 0;
+
+                // View-aware metrics & progress calculation
+                let viewLabel = 'Overall Habit Goal';
+                let viewCompleted = completedDays;
+                let viewTarget = targetDays;
+
+                if (currentHabitView === 'daily') {
+                    viewLabel = `Today's Check-In Progress (${todayCheckIns}/${habit.dailyRequired} today)`;
+                    viewCompleted = completedDays;
+                    viewTarget = targetDays;
+                } else if (currentHabitView === 'weekly') {
+                    viewLabel = 'Weekly View (Target: 7 Days)';
+                    viewCompleted = Math.min(7, completedDays);
+                    viewTarget = 7;
+                } else if (currentHabitView === 'monthly') {
+                    viewLabel = 'Monthly View (Target: 30 Days)';
+                    viewCompleted = Math.min(30, completedDays);
+                    viewTarget = 30;
+                } else if (currentHabitView === 'yearly') {
+                    viewLabel = 'Yearly View (Target: 365 Days)';
+                    viewCompleted = Math.min(365, completedDays);
+                    viewTarget = 365;
+                }
+
+                const completionRate = Math.min(100, Math.round((completedDays / targetDays) * 100));
+                const todayPct = Math.min(100, Math.round((todayCheckIns / habit.dailyRequired) * 100));
+
+                return `
+                    <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm flex flex-col justify-between space-y-4">
+                        <!-- Top Row: Icon, Name, Target Info & Delete -->
+                        <div class="flex items-start justify-between gap-3">
+                            <div class="flex items-center gap-3">
+                                <div class="w-12 h-12 rounded-2xl bg-blue-50 border border-blue-100 flex items-center justify-center text-2xl shrink-0">
+                                    ${habit.icon}
+                                </div>
+                                <div>
+                                    <h4 class="font-bold text-base text-slate-900">${habit.name}</h4>
+                                    <p class="text-xs text-slate-500">
+                                        Goal: <strong>${habit.targetDays} Days</strong> • Check-in <strong>${habit.dailyRequired}x / day</strong>
+                                    </p>
+                                    <span class="inline-block mt-1 text-[11px] font-semibold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md">
+                                        ${viewLabel}
+                                    </span>
+                                </div>
+                            </div>
+                            <button onclick="deleteHabit('${habit.id}')" class="text-xs text-slate-400 hover:text-red-600 font-bold px-1.5">✕</button>
+                        </div>
+
+                        <!-- Required 3 Core Stat Boxes in exact format requested -->
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
+                            <!-- [Completed]/[Total Completed Times] (Completed) -->
+                            <div class="bg-slate-50 border border-slate-200 rounded-xl p-3 text-center">
+                                <div class="font-mono-num text-lg font-bold text-slate-900">
+                                    ${completedDays}/${targetDays}
+                                </div>
+                                <div class="text-[11px] font-semibold text-slate-500 mt-0.5">
+                                    (Completed)
+                                </div>
+                            </div>
+
+                            <!-- [Total of the Check-In times] (Check-Ins) -->
+                            <div class="bg-slate-50 border border-slate-200 rounded-xl p-3 text-center">
+                                <div class="font-mono-num text-lg font-bold text-blue-600">
+                                    ${totalCheckIns}
+                                </div>
+                                <div class="text-[11px] font-semibold text-slate-500 mt-0.5">
+                                    (Check-Ins)
+                                </div>
+                            </div>
+
+                            <!-- [Completion Rate, in %] (Completed) -->
+                            <div class="bg-slate-50 border border-slate-200 rounded-xl p-3 text-center">
+                                <div class="font-mono-num text-lg font-bold text-slate-900">
+                                    ${completionRate}%
+                                </div>
+                                <div class="text-[11px] font-semibold text-slate-500 mt-0.5">
+                                    (Completed)
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Progress Bars (Today's Check-In Bar & Overall Goal Bar) -->
+                        <div class="space-y-2">
+                            <div>
+                                <div class="flex justify-between text-xs font-semibold mb-1">
+                                    <span class="text-slate-600">Today's Check-Ins: ${todayCheckIns} / ${habit.dailyRequired}</span>
+                                    <span class="font-mono-num text-blue-600">${todayPct}%</span>
+                                </div>
+                                <div class="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                                    <div class="h-full bg-blue-600 rounded-full transition-all duration-300" style="width: ${todayPct}%"></div>
+                                </div>
+                            </div>
+
+                            <div>
+                                <div class="flex justify-between text-xs font-semibold mb-1">
+                                    <span class="text-slate-600">${currentHabitView.charAt(0).toUpperCase() + currentHabitView.slice(1)} View Progress (${viewCompleted}/${viewTarget} days)</span>
+                                    <span class="font-mono-num text-slate-700">${Math.min(100, Math.round((viewCompleted / viewTarget) * 100))}%</span>
+                                </div>
+                                <div class="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                                    <div class="h-full bg-blue-600 rounded-full transition-all duration-300" style="width: ${Math.min(100, Math.round((viewCompleted / viewTarget) * 100))}%"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Interactive Check-In Button Row -->
+                        <div class="flex items-center justify-between gap-2 pt-1">
+                            <button
+                                onclick="checkInHabit('${habit.id}')"
+                                class="flex-1 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-semibold py-2.5 px-4 rounded-xl text-xs shadow-sm transition flex items-center justify-center gap-1.5"
+                            >
+                                <span>✓ Check-In Now (+1)</span>
+                                <span class="font-mono-num bg-blue-700 px-2 py-0.5 rounded-md text-[11px]">${todayCheckIns}/${habit.dailyRequired}</span>
+                            </button>
+                            <button
+                                onclick="resetTodayHabitCheckIn('${habit.id}')"
+                                title="Reset today's check-ins"
+                                class="bg-blue-50 hover:bg-blue-100 text-blue-700 font-semibold py-2.5 px-3 rounded-xl text-xs transition"
+                            >
+                                ↺ Undo Today
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        /**************************************************************
+         * INITIALIZE APPLICATION ON LOAD
+         **************************************************************/
+        window.onload = function () {
+            // 1. Start real-world clock & reminder watcher
+            updateRealWorldClock();
+            setInterval(updateRealWorldClock, 1000);
+
+            // 2. Populate Focus Task Selector & Timer Visuals
+            populateFocusTaskDropdown();
+            updateTimerVisuals();
+
+            // 3. Render Calendar & Reminders
+            renderCalendar();
+
+            // 4. Render To-Do List Board
+            renderTodos();
+
+            // 5. Render Habit Icon Picker & Habit Cards
+            renderHabitIconPicker();
+            renderHabits();
+        };
+    </script>
+</body>
+</html>
